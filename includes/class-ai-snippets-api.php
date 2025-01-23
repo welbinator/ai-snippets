@@ -7,198 +7,117 @@ class AI_Snippets_API {
 
         add_action('wp_ajax_check_openai_connection', [__CLASS__, 'check_openai_connection']);
         add_action('wp_ajax_generate_snippet', [__CLASS__, 'generate_snippet']);
-
+        add_action('init', [__CLASS__, 'execute_active_snippets']); // Hook to run active snippets
     }
 
     public static function check_openai_connection() {
         check_ajax_referer('ai_snippets_nonce', 'security');
-    
         if (empty(self::$api_key)) {
-            $response = ['success' => false, 'message' => 'API Key is missing.'];
-            error_log('Response: ' . json_encode($response)); // Log response for debugging
-            wp_send_json_error($response);
+            wp_send_json_error(['message' => 'API Key is missing.']);
         }
-    
+
         $url = 'https://api.openai.com/v1/engines';
         $response = wp_remote_get($url, [
-            'headers' => [
-                'Authorization' => 'Bearer ' . self::$api_key,
-            ],
+            'headers' => ['Authorization' => 'Bearer ' . self::$api_key],
             'timeout' => 60,
         ]);
-    
+
         if (is_wp_error($response)) {
-            $error_response = ['success' => false, 'message' => 'Connection failed: ' . $response->get_error_message()];
-            error_log('Response: ' . json_encode($error_response)); // Log response for debugging
-            wp_send_json_error($error_response);
+            wp_send_json_error(['message' => 'Connection failed: ' . $response->get_error_message()]);
         }
-    
+
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code === 200) {
-            $success_response = ['success' => true, 'message' => 'Connection successful. API Key is valid.'];
-            error_log('Response: ' . json_encode($success_response)); // Log response for debugging
-            wp_send_json_success($success_response);
+            wp_send_json_success(['message' => 'Connection successful.']);
         } else {
-            $failure_response = ['success' => false, 'message' => 'Connection failed. HTTP Status Code: ' . $status_code];
-            error_log('Response: ' . json_encode($failure_response)); // Log response for debugging
-            wp_send_json_error($failure_response);
+            wp_send_json_error(['message' => 'HTTP Status Code: ' . $status_code]);
         }
     }
 
-    // Generate snippet with AI
     public static function generate_snippet() {
         check_ajax_referer('ai_snippets_nonce', 'security');
-    
-        $prompt = isset($_POST['prompt']) ? sanitize_text_field($_POST['prompt']) : '';
-        $type = isset($_POST['type']) ? sanitize_text_field($_POST['type']) : '';
-    
+        $prompt = sanitize_text_field($_POST['prompt'] ?? '');
         if (empty($prompt)) {
             wp_send_json_error(['message' => 'Prompt is required.']);
         }
-    
+
         $api_key = get_option('ai_snippets_api_key', '');
-        if (empty($api_key)) {
-            wp_send_json_error(['message' => 'API Key is missing.']);
-        }
-    
-        $retry_count = 0;
-        $max_retries = 3;
-        $response = null;
-    
-        $start_time = microtime(true); // Start timing the request
-    
-        while ($retry_count < $max_retries) {
-            $response = wp_remote_post('https://api.openai.com/v1/chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $api_key,
-                    'Content-Type' => 'application/json',
+        $response = wp_remote_post('https://api.openai.com/v1/chat/completions', [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+            ],
+            'body' => json_encode([
+                'model' => 'gpt-4',
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Provide only valid code in response.'],
+                    ['role' => 'user', 'content' => $prompt],
                 ],
-                'body' => json_encode([
-                    'model' => 'gpt-4',
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => 'You are a coding assistant. When responding to the user, ONLY provide the code snippet in the requested programming language or format, with no additional explanation, comments, or text. Respond with valid code only.',
-                        ],
-                        [
-                            'role' => 'user',
-                            'content' => $prompt,
-                        ],
-                    ],
-                    'max_tokens' => 1000,
-                ]),
-                'timeout' => 20, // Increased timeout
-            ]);
-    
-            if (!is_wp_error($response)) {
-                break; // Exit retry loop if request succeeds
-            }
-    
-            $retry_count++;
-            error_log('Retrying OpenAI API request, attempt: ' . ($retry_count + 1));
-        }
-    
-        $end_time = microtime(true); // End timing the request
-        
-    
+                'max_tokens' => 1000,
+            ]),
+        ]);
+
         if (is_wp_error($response)) {
-            error_log('API Error: ' . $response->get_error_message());
-            wp_send_json_error(['message' => 'Failed to connect to OpenAI after retries.']);
+            wp_send_json_error(['message' => 'API error: ' . $response->get_error_message()]);
         }
-    
-        $status_code = wp_remote_retrieve_response_code($response);
-        $body = wp_remote_retrieve_body($response);
-        
-        $body = json_decode($body, true);
-    
-        if ($status_code !== 200) {
-            $error_message = $body['error']['message'] ?? 'Unknown error';
-            error_log('OpenAI API Error: ' . $error_message);
-            wp_send_json_error(['message' => 'OpenAI API request failed: ' . $error_message]);
-        }
-    
-        $choices = $body['choices'] ?? null;
-    
-        if ($choices && isset($choices[0]['message']['content'])) {
-            $snippet = $choices[0]['message']['content'];
-    
-            // Remove surrounding backticks and language hints
-            $snippet = preg_replace('/^```[a-z]*\n|\n```$/', '', $snippet);
-    
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (isset($body['choices'][0]['message']['content'])) {
+            $snippet = preg_replace('/^```[a-z]*\n|\n```$/', '', $body['choices'][0]['message']['content']);
             wp_send_json_success(['snippet' => $snippet]);
+        }
+
+        wp_send_json_error(['message' => 'Failed to generate snippet.']);
+    }
+
+    public static function save_snippet() {
+        check_ajax_referer('ai_snippets_nonce', 'security');
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'ai_snippets';
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        $type = sanitize_text_field($_POST['type'] ?? '');
+        $description = sanitize_textarea_field($_POST['description'] ?? '');
+        $code = wp_unslash($_POST['code'] ?? '');
+
+        if (empty($name) || empty($code)) {
+            wp_send_json_error(['message' => 'Name and code are required.']);
+        }
+
+        $data = [
+            'name'        => $name,
+            'description' => $description,
+            'code'        => $code,
+            'type'        => $type,
+            'active'      => 0,
+            'updated_at'  => current_time('mysql'),
+        ];
+
+        if (!empty($_POST['id'])) {
+            $id = intval($_POST['id']);
+            $wpdb->update($table_name, $data, ['id' => $id]);
+            wp_send_json_success(['message' => 'Snippet updated successfully.']);
         } else {
-            error_log('Unexpected OpenAI Response Structure: ' . print_r($body, true));
-            wp_send_json_error(['message' => 'Failed to generate snippet. Unexpected response structure.']);
+            $data['created_at'] = current_time('mysql');
+            $wpdb->insert($table_name, $data);
+            wp_send_json_success(['message' => 'Snippet saved successfully.']);
         }
     }
-    
-    
-    
-    
-// Save snippet
-public static function save_snippet() {
-    error_log("snippet saved");
-    check_ajax_referer('ai_snippets_nonce', 'security'); // Validate nonce
 
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'ai_snippets';
+    public static function execute_active_snippets() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ai_snippets';
 
-    // Sanitize input values
-    $name = sanitize_text_field($_POST['name'] ?? '');
-    $type = sanitize_text_field($_POST['type'] ?? '');
-    $code = sanitize_textarea_field($_POST['code'] ?? '');
-    $description = sanitize_textarea_field($_POST['description'] ?? ''); // Default to empty string if missing
+        $snippets = $wpdb->get_results("SELECT code FROM $table_name WHERE active = 1", ARRAY_A);
 
-    // Check required fields
-    if (empty($name) || empty($code)) {
-        wp_send_json_error(['message' => 'Name and code are required.']);
+        foreach ($snippets as $snippet) {
+            eval($snippet['code']); // Execute the PHP code
+        }
     }
 
-    // Prepare data for insertion or update
-    $data = [
-        'name'        => $name,
-        'description' => $description,
-        'code'        => $code,
-        'type'        => $type,
-        'active'      => 0, // Default to inactive
-        'updated_at'  => current_time('mysql'),
-    ];
-    $format = ['%s', '%s', '%s', '%s', '%d', '%s'];
-    error_log('Saving Snippet Data: ' . print_r($data, true));
-
-    if (!empty($_POST['id'])) {
-        // Update existing snippet
-        $id = intval($_POST['id']);
-        $updated = $wpdb->update($table_name, $data, ['id' => $id], $format, ['%d']);
-
-        if ($updated === false) {
-            wp_send_json_error(['message' => 'Failed to update snippet.']);
-        }
-        wp_send_json_success(['message' => 'Snippet updated successfully.']);
-    } else {
-        // Insert new snippet
-        $data['created_at'] = current_time('mysql');
-        $format[] = '%s'; // Add format for created_at
-        $inserted = $wpdb->insert($table_name, $data, $format);
-
-        if ($inserted === false) {
-            wp_send_json_error(['message' => 'Failed to save snippet.']);
-        }
-        wp_send_json_success(['message' => 'Snippet saved successfully.']);
+    public static function get_snippets() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ai_snippets';
+        return $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC", ARRAY_A);
     }
-}
-
-
-public static function get_snippets() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'ai_snippets';
-
-    $results = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC", ARRAY_A);
-
-    return $results;
-}
-
-
-
-    
 }

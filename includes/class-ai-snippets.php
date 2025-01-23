@@ -1,54 +1,33 @@
 <?php
 class AI_Snippets {
     public function run() {
-        // Initialize settings and API.
         AI_Snippets_Settings::init();
         AI_Snippets_API::init();
 
-        // Register admin menu.
         add_action('admin_menu', [$this, 'register_admin_menu']);
-
-        // Enqueue scripts and localize nonce.
         add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
 
-        // Register AJAX handler for saving snippets.
+        // Register AJAX handlers for snippets
         add_action('wp_ajax_save_snippet', [AI_Snippets_API::class, 'save_snippet']);
+        add_action('wp_ajax_toggle_snippet_status', [AI_Snippets_API::class, 'toggle_snippet_status']);
+        add_action('wp_ajax_delete_snippet', [AI_Snippets_API::class, 'delete_snippet']);
     }
 
     public function enqueue_scripts($hook) {
-        // Only enqueue on the AI Snippets admin pages.
         if (!in_array($hook, ['toplevel_page_ai-snippets', 'ai-snippets_page_ai-snippets-api-key'])) {
             return;
         }
 
         wp_enqueue_script('ai-snippets-script', AI_SNIPPETS_PLUGIN_URL . 'assets/js/admin.js', ['jquery'], AI_SNIPPETS_VERSION, true);
-
-        // Localize the script with nonce and ajaxurl.
         wp_localize_script('ai-snippets-script', 'aiSnippetsData', [
             'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('ai_snippets_nonce'),
+            'nonce'   => wp_create_nonce('ai_snippets_nonce'),
         ]);
     }
 
     public function register_admin_menu() {
-        add_menu_page(
-            'AI Snippets',          // Page title
-            'AI Snippets',          // Menu title
-            'manage_options',       // Capability
-            'ai-snippets',          // Menu slug
-            [$this, 'render_snippets_page'], // Callback function
-            'dashicons-admin-tools', // Icon
-            25                      // Position
-        );
-
-        add_submenu_page(
-            'ai-snippets',          // Parent slug
-            'API Key',              // Page title
-            'API Key',              // Submenu title
-            'manage_options',       // Capability
-            'ai-snippets-api-key',  // Menu slug
-            [AI_Snippets_Settings::class, 'render_settings_page'] // Callback function
-        );
+        add_menu_page('AI Snippets', 'AI Snippets', 'manage_options', 'ai-snippets', [$this, 'render_snippets_page'], 'dashicons-admin-tools', 25);
+        add_submenu_page('ai-snippets', 'API Key', 'API Key', 'manage_options', 'ai-snippets-api-key', [AI_Snippets_Settings::class, 'render_settings_page']);
     }
 
     public function render_snippets_page() {
@@ -106,9 +85,21 @@ class AI_Snippets {
                             <tr>
                                 <td><?php echo esc_html($snippet['name']); ?></td>
                                 <td><?php echo esc_html($snippet['type']); ?></td>
-                                <td><?php echo $snippet['active'] ? 'Active' : 'Inactive'; ?></td>
+                                <td id="snippet-status-<?php echo esc_attr($snippet['id']); ?>">
+                                    <?php echo $snippet['active'] ? 'Active' : 'Inactive'; ?>
+                                </td>
                                 <td>
-                                    <button class="button edit-snippet" data-id="<?php echo $snippet['id']; ?>">Edit</button>
+                                    <button class="button edit-snippet" data-id="<?php echo esc_attr($snippet['id']); ?>" 
+                                        data-name="<?php echo esc_attr($snippet['name']); ?>"
+                                        data-type="<?php echo esc_attr($snippet['type']); ?>"
+                                        data-description="<?php echo esc_attr($snippet['description']); ?>"
+                                        data-code="<?php echo htmlspecialchars($snippet['code'], ENT_QUOTES, 'UTF-8'); ?>">
+                                        Edit
+                                    </button>
+                                    <button class="button toggle-snippet" data-id="<?php echo $snippet['id']; ?>" 
+                                        data-active="<?php echo $snippet['active']; ?>">
+                                        <?php echo $snippet['active'] ? 'Deactivate' : 'Activate'; ?>
+                                    </button>
                                     <button class="button delete-snippet" data-id="<?php echo $snippet['id']; ?>">Delete</button>
                                 </td>
                             </tr>

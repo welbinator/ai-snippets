@@ -114,6 +114,111 @@ document.getElementById('save-snippet').addEventListener('click', function () {
         });
 });
 
+// Handle the "Edit Snippet" button click
+document.querySelectorAll('.edit-snippet').forEach((button) => {
+    button.addEventListener('click', function () {
+        const snippetEditor = document.getElementById('snippet-editor');
+        snippetEditor.style.display = 'block';
+
+        // Populate form with snippet data
+        document.getElementById('snippet-id').value = this.dataset.id;
+        document.getElementById('snippet-name').value = this.dataset.name;
+        document.getElementById('snippet-type').value = this.dataset.type;
+        document.getElementById('snippet-description').value = this.dataset.description;
+
+        // Decode the HTML entities for the code field
+        const textarea = document.getElementById('snippet-code');
+        textarea.value = decodeHtmlEntities(this.dataset.code);
+    });
+});
+
+// Helper function to decode HTML entities
+function decodeHtmlEntities(encodedString) {
+    const textArea = document.createElement('textarea');
+    textArea.innerHTML = encodedString;
+    return textArea.value;
+}
+
+
+
+// Handle the "Delete Snippet" button click
+document.querySelectorAll('.delete-snippet').forEach((button) => {
+    button.addEventListener('click', function () {
+        const id = this.dataset.id;
+
+        if (!confirm('Are you sure you want to delete this snippet?')) {
+            return;
+        }
+
+        fetch(ajaxurl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                action: 'delete_snippet',
+                security: aiSnippetsData.nonce,
+                id: id,
+            }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the deleted snippet's row from the table
+                    this.closest('tr').remove();
+                } else {
+                    alert('Failed to delete snippet: ' + (data.message || 'Unknown error.'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while deleting the snippet.');
+            });
+    });
+});
+
+
+// Handle the "Activate/Deactivate Snippet" button click
+document.querySelectorAll('.toggle-snippet').forEach((button) => {
+    button.addEventListener('click', function () {
+        const id = this.dataset.id;
+        const active = this.dataset.active === '1' ? '0' : '1';
+
+        fetch(ajaxurl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                action: 'toggle_snippet_status',
+                security: aiSnippetsData.nonce,
+                id: id,
+                active: active,
+            }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the button's state and text
+                    this.dataset.active = active;
+                    this.textContent = active === '1' ? 'Deactivate' : 'Activate';
+
+                    // Update the status column in the table
+                    const statusCell = document.querySelector(`#snippet-status-${id}`);
+                    if (statusCell) {
+                        statusCell.textContent = active === '1' ? 'Active' : 'Inactive';
+                    }
+                } else {
+                    // Show error message if the update fails
+                    alert('Failed to update snippet status: ' + (data.message || 'Unknown error.'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating snippet status.');
+            });
+    });
+});
+
+
+
+
 
 
 
