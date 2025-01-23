@@ -47,7 +47,7 @@ class AI_Snippets_API {
 
     // Generate snippet with AI
     public static function generate_snippet() {
-        check_ajax_referer('ai_snippets_nonce', 'security'); // Validate nonce
+        check_ajax_referer('ai_snippets_nonce', 'security');
     
         $prompt = isset($_POST['prompt']) ? sanitize_text_field($_POST['prompt']) : '';
         $type = isset($_POST['type']) ? sanitize_text_field($_POST['type']) : '';
@@ -99,7 +99,7 @@ class AI_Snippets_API {
         }
     
         $end_time = microtime(true); // End timing the request
-        error_log('OpenAI request duration: ' . ($end_time - $start_time) . ' seconds');
+        
     
         if (is_wp_error($response)) {
             error_log('API Error: ' . $response->get_error_message());
@@ -108,7 +108,7 @@ class AI_Snippets_API {
     
         $status_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
-        error_log('OpenAI Full Response: ' . $body); // Log the full response for debugging
+        
         $body = json_decode($body, true);
     
         if ($status_code !== 200) {
@@ -122,7 +122,7 @@ class AI_Snippets_API {
         if ($choices && isset($choices[0]['message']['content'])) {
             $snippet = $choices[0]['message']['content'];
     
-            // Remove surrounding backticks if present
+            // Remove surrounding backticks and language hints
             $snippet = preg_replace('/^```[a-z]*\n|\n```$/', '', $snippet);
     
             wp_send_json_success(['snippet' => $snippet]);
@@ -133,21 +133,72 @@ class AI_Snippets_API {
     }
     
     
+    
+    
 // Save snippet
 public static function save_snippet() {
-    check_ajax_referer('ai_snippets_nonce', 'security');
+    error_log("snippet saved");
+    check_ajax_referer('ai_snippets_nonce', 'security'); // Validate nonce
 
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'ai_snippets';
+
+    // Sanitize input values
     $name = sanitize_text_field($_POST['name'] ?? '');
     $type = sanitize_text_field($_POST['type'] ?? '');
     $code = sanitize_textarea_field($_POST['code'] ?? '');
+    $description = sanitize_textarea_field($_POST['description'] ?? ''); // Default to empty string if missing
 
+    // Check required fields
     if (empty($name) || empty($code)) {
         wp_send_json_error(['message' => 'Name and code are required.']);
     }
 
-    // Save snippet logic here, e.g., save to a custom post type or custom table
-    wp_send_json_success(['message' => 'Snippet saved successfully.']);
+    // Prepare data for insertion or update
+    $data = [
+        'name'        => $name,
+        'description' => $description,
+        'code'        => $code,
+        'type'        => $type,
+        'active'      => 0, // Default to inactive
+        'updated_at'  => current_time('mysql'),
+    ];
+    $format = ['%s', '%s', '%s', '%s', '%d', '%s'];
+    error_log('Saving Snippet Data: ' . print_r($data, true));
+
+    if (!empty($_POST['id'])) {
+        // Update existing snippet
+        $id = intval($_POST['id']);
+        $updated = $wpdb->update($table_name, $data, ['id' => $id], $format, ['%d']);
+
+        if ($updated === false) {
+            wp_send_json_error(['message' => 'Failed to update snippet.']);
+        }
+        wp_send_json_success(['message' => 'Snippet updated successfully.']);
+    } else {
+        // Insert new snippet
+        $data['created_at'] = current_time('mysql');
+        $format[] = '%s'; // Add format for created_at
+        $inserted = $wpdb->insert($table_name, $data, $format);
+
+        if ($inserted === false) {
+            wp_send_json_error(['message' => 'Failed to save snippet.']);
+        }
+        wp_send_json_success(['message' => 'Snippet saved successfully.']);
+    }
 }
+
+
+public static function get_snippets() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'ai_snippets';
+
+    $results = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC", ARRAY_A);
+
+    return $results;
+}
+
+
 
     
 }

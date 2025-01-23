@@ -25,6 +25,30 @@ require_once AI_SNIPPETS_PLUGIN_DIR . 'includes/class-ai-snippets.php';
 require_once AI_SNIPPETS_PLUGIN_DIR . 'includes/class-ai-snippets-api.php';
 require_once AI_SNIPPETS_PLUGIN_DIR . 'includes/class-ai-snippets-settings.php';
 
+// Create the custom table on plugin activation.
+register_activation_hook(__FILE__, 'ai_snippets_create_table');
+
+function ai_snippets_create_table() {
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'ai_snippets'; // Unique table name
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT DEFAULT NULL,
+        code LONGTEXT NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        active TINYINT(1) DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
 // Initialize the plugin.
 function ai_snippets_init() {
     // Load the main plugin class.
