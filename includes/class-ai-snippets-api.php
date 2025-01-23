@@ -115,6 +115,67 @@ class AI_Snippets_API {
         }
     }
 
+    public static function toggle_snippet_status() {
+        check_ajax_referer('ai_snippets_nonce', 'security'); // Validate nonce
+    
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ai_snippets';
+    
+        // Get the ID and active status from the request
+        $id = intval($_POST['id'] ?? 0);
+        $active = intval($_POST['active'] ?? 0);
+    
+        // Ensure we have a valid ID
+        if (!$id) {
+            wp_send_json_error(['message' => 'Snippet ID is required.']);
+        }
+    
+        // Update the snippet's active status in the database
+        $updated = $wpdb->update(
+            $table_name,
+            ['active' => $active],
+            ['id' => $id],
+            ['%d'], // Format for active status
+            ['%d']  // Format for ID
+        );
+    
+        if ($updated === false) {
+            // Respond with an error if the update fails
+            wp_send_json_error(['message' => 'Failed to update snippet status.']);
+        }
+    
+        // Respond with success and the updated status
+        $status = $active ? 'activated' : 'deactivated';
+        wp_send_json_success(['message' => "Snippet successfully $status."]);
+    }
+    
+    public static function delete_snippet() {
+        check_ajax_referer('ai_snippets_nonce', 'security'); // Validate nonce for security
+    
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ai_snippets';
+    
+        // Get the snippet ID from the request
+        $id = intval($_POST['id'] ?? 0);
+    
+        // Ensure a valid ID is provided
+        if (empty($id)) {
+            wp_send_json_error(['message' => 'Invalid snippet ID.']);
+        }
+    
+        // Attempt to delete the snippet from the database
+        $deleted = $wpdb->delete($table_name, ['id' => $id], ['%d']);
+    
+        if ($deleted === false) {
+            // Respond with an error if the deletion fails
+            wp_send_json_error(['message' => 'Failed to delete snippet.']);
+        }
+    
+        // Respond with success if deletion is successful
+        wp_send_json_success(['message' => 'Snippet deleted successfully.']);
+    }
+    
+
     public static function get_snippets() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'ai_snippets';
