@@ -7,6 +7,24 @@ class AI_Snippets {
 
         // Register admin menu.
         add_action('admin_menu', [$this, 'register_admin_menu']);
+
+        // Enqueue scripts and localize nonce.
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
+    }
+
+    public function enqueue_scripts($hook) {
+        // Only enqueue on the AI Snippets admin pages.
+        if (!in_array($hook, ['toplevel_page_ai-snippets', 'ai-snippets_page_ai-snippets-api-key'])) {
+            return;
+        }
+    
+        wp_enqueue_script('ai-snippets-script', AI_SNIPPETS_PLUGIN_URL . 'assets/js/admin.js', ['jquery'], AI_SNIPPETS_VERSION, true);
+    
+        // Localize the script with nonce and ajaxurl.
+        wp_localize_script('ai-snippets-script', 'aiSnippetsData', [
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('ai_snippets_nonce'),
+        ]);
     }
 
     public function register_admin_menu() {
@@ -34,48 +52,37 @@ class AI_Snippets {
         ?>
         <div class="wrap">
             <h1>AI Snippets</h1>
-            <p>Manage and create AI-generated code snippets here.</p>
-            <button id="check-connection" class="button button-primary">Check OpenAI Connection</button>
-            <div id="connection-result" style="margin-top: 15px;"></div>
+            <button id="add-new-snippet" class="button button-primary">Add New Snippet</button>
+            <div id="snippet-editor" style="display: none; margin-top: 20px;">
+                <h2>New Snippet</h2>
+                <form id="snippet-form">
+                    <label for="snippet-name">Name:</label>
+                    <input type="text" id="snippet-name" name="snippet_name" class="regular-text" required>
+                    
+                    <label for="snippet-type">Type:</label>
+                    <select id="snippet-type" name="snippet_type">
+                        <option value="php">PHP</option>
+                        <option value="js">JavaScript</option>
+                        <option value="css">CSS</option>
+                        <option value="html">HTML</option>
+                        <option value="shortcode">Shortcode</option>
+                    </select>
+    
+                    <button id="generate-snippet" type="button" class="button">Use AI to Generate Snippet</button>
+                    <div id="ai-generator" style="display: none; margin-top: 10px;">
+                        <textarea id="ai-prompt" rows="4" style="width: 100%;" placeholder="Describe the snippet you want..."></textarea>
+                        <button id="submit-ai-prompt" type="button" class="button button-primary">Submit</button>
+                    </div>
+    
+                    <label for="snippet-code">Snippet:</label>
+                    <textarea id="snippet-code" name="snippet_code" rows="10" style="width: 100%;"></textarea>
+    
+                    <button id="save-snippet" type="button" class="button button-primary">Save Snippet</button>
+                </form>
+            </div>
         </div>
-        <script>
-            document.getElementById('check-connection').addEventListener('click', function () {
-    console.log('Checking connection...');
-    fetch(ajaxurl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            action: 'check_openai_connection',
-            security: '<?php echo wp_create_nonce('ai_snippets_nonce'); ?>'
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Full Response:', data); // Log the response for debugging
-        const resultDiv = document.getElementById('connection-result');
-
-        // Correctly access the nested message key
-        if (data && data.success && data.data && data.data.message) {
-            resultDiv.innerHTML = `<p style="color: green;">${data.data.message}</p>`;
-        } else if (data && data.data && data.data.message) {
-            resultDiv.innerHTML = `<p style="color: red;">${data.data.message}</p>`;
-        } else {
-            resultDiv.innerHTML = `<p style="color: red;">Response format is valid but missing keys.</p>`;
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error); // Log any unexpected errors
-        document.getElementById('connection-result').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
-    });
-});
-
-
-        </script>
+        
         <?php
     }
+    
 }
