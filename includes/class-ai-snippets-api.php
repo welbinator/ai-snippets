@@ -19,7 +19,7 @@ class AI_Snippets_API {
         $url = 'https://api.openai.com/v1/engines';
         $response = wp_remote_get($url, [
             'headers' => ['Authorization' => 'Bearer ' . self::$api_key],
-            'timeout' => 60,
+            'timeout' => 20,
         ]);
 
         if (is_wp_error($response)) {
@@ -55,7 +55,9 @@ class AI_Snippets_API {
                 ],
                 'max_tokens' => 1000,
             ]),
+            'timeout' => 20, // Increased timeout to 20 seconds
         ]);
+        
 
         if (is_wp_error($response)) {
             wp_send_json_error(['message' => 'API error: ' . $response->get_error_message()]);
@@ -63,7 +65,15 @@ class AI_Snippets_API {
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
         if (isset($body['choices'][0]['message']['content'])) {
-            $snippet = preg_replace('/^```[a-z]*\n|\n```$/', '', $body['choices'][0]['message']['content']);
+            $content = $body['choices'][0]['message']['content'];
+
+            // Extract only the content inside the first pair of backticks
+            if (preg_match('/```[a-z]*\n(.*?)\n```/s', $content, $matches)) {
+                $snippet = $matches[1]; // Extracted code
+            } else {
+                $snippet = $content; // Fallback to raw content if no backticks are found
+            }
+
             wp_send_json_success(['snippet' => $snippet]);
         }
 
